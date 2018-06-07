@@ -47,7 +47,7 @@
 ## Install
 
 ```
-npm install ng2-pdf-viewer --save
+npm install ng2-pdf-viewer pdfjs-dist @types/pdfjs-dist --save
 ```
 
 *Note: For angular 4 or less use version `3.0.8`*
