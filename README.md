@@ -64,10 +64,28 @@ import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { AppComponent } from './app/app.component';
 
-import { PdfViewerModule } from 'ng2-pdf-viewer';
+import { PdfViewerModule, LAZY_LOAD_PDFJS } from 'ng2-pdf-viewer';
+
+function lazyLoadPDFJS() {
+  return async () => {
+    const [PDFJS, PDFJSViewer] = await Promise.all(
+      [
+        import('pdfjs-dist/build/pdf'),
+        import('pdfjs-dist/web/pdf_viewer')
+      ]
+    );
+    return {PDFJS, PDFJSViewer}
+  };
+}
 
 @NgModule({
-  imports: [BrowserModule, PdfViewerModule],
+  imports: [
+    BrowserModule,
+    PdfViewerModule.forRoot({
+      provide: LAZY_LOAD_PDFJS,
+      useFactory: lazyLoadPDFJS
+    })
+  ],
   declarations: [AppComponent],
   bootstrap: [AppComponent]
 })

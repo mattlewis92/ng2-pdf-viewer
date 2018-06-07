@@ -2,21 +2,21 @@
  * Created by vadimdez on 21/06/16.
  */
 import {
-  Component, Input, Output, ElementRef, EventEmitter, OnChanges, SimpleChanges, OnInit, HostListener
+  Component, Input, Output, ElementRef, EventEmitter, OnChanges, SimpleChanges, OnInit, HostListener, Inject
 } from '@angular/core';
-import { PDFDocumentProxy, PDFViewerParams, PDFPageProxy, PDFSource, PDFProgressData, PDFPromise } from 'pdfjs-dist';
-let PDFJS: any;
-let PDFJSViewer: any;
+import {
+  PDFDocumentProxy,
+  PDFViewerParams,
+  PDFPageProxy,
+  PDFSource,
+  PDFProgressData,
+  PDFPromise,
+  PDFJSStatic
+} from 'pdfjs-dist';
+import { LAZY_LOAD_PDFJS } from './lazy-load-pdfjs';
 
 function isSSR() {
   return typeof window === 'undefined';
-}
-
-if (!isSSR()) {
-  PDFJS = require('pdfjs-dist/build/pdf');
-  PDFJSViewer = require('pdfjs-dist/web/pdf_viewer');
-
-  PDFJS.verbosity = PDFJS.VerbosityLevel.ERRORS;
 }
 
 @Component({
@@ -25,7 +25,7 @@ if (!isSSR()) {
   styleUrls: ['./pdf-viewer.component.scss']
 })
 
-export class PdfViewerComponent implements OnChanges, OnInit {
+export class PdfViewerComponent implements OnChanges {
   static CSS_UNITS: number = 96.0 / 72.0;
 
   public pdfLinkService: any;
@@ -45,6 +45,9 @@ export class PdfViewerComponent implements OnChanges, OnInit {
   private _externalLinkTarget: string = 'blank';
   private lastLoaded: string | Uint8Array | PDFSource;
   private resizeTimeout: NodeJS.Timer;
+  private PDFJS;
+  private PDFJSViewer;
+  private pdfJSLoaded;
 
   @Output('after-load-complete') afterLoadComplete = new EventEmitter<PDFDocumentProxy>();
   @Output('page-rendered') pageRendered = new EventEmitter<CustomEvent>();
@@ -52,26 +55,32 @@ export class PdfViewerComponent implements OnChanges, OnInit {
   @Output('on-progress') onProgress = new EventEmitter<PDFProgressData>();
   @Output() pageChange: EventEmitter<number> = new EventEmitter<number>(true);
 
-  constructor(private element: ElementRef) {
-    if (isSSR()) {
-      return;
-    }
+  constructor(
+    private element: ElementRef,
+    @Inject(LAZY_LOAD_PDFJS) private lazyLoadPdfJS: () => Promise<{PDFJS: PDFJSStatic, PDFJSViewer: any}>
+  ) {
 
-    let pdfWorkerSrc: string;
-
-    if (window.hasOwnProperty('pdfWorkerSrc') && typeof (window as any).pdfWorkerSrc === 'string' && (window as any).pdfWorkerSrc) {
-      pdfWorkerSrc = (window as any).pdfWorkerSrc;
-    } else {
-      pdfWorkerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${ (PDFJS as any).version }/pdf.worker.min.js`;
-    }
-
-    (PDFJS as any).GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
-  }
-
-  ngOnInit() {
     if (!isSSR()) {
-      this.setupViewer();
+      this.pdfJSLoaded = this.lazyLoadPdfJS().then(({PDFJS, PDFJSViewer}) => {
+
+        this.PDFJS = PDFJS;
+        this.PDFJSViewer = PDFJSViewer;
+
+        PDFJS['verbosity'] = PDFJS['VerbosityLevel'].ERRORS;
+
+        let pdfWorkerSrc: string;
+
+        if (window.hasOwnProperty('pdfWorkerSrc') && typeof (window as any).pdfWorkerSrc === 'string' && (window as any).pdfWorkerSrc) {
+          pdfWorkerSrc = (window as any).pdfWorkerSrc;
+        } else {
+          pdfWorkerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${ (PDFJS as any).version }/pdf.worker.min.js`;
+        }
+
+        (PDFJS as any).GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+        this.setupViewer();
+      });
     }
+
   }
 
   @HostListener('window:resize', [])
@@ -98,14 +107,16 @@ export class PdfViewerComponent implements OnChanges, OnInit {
       return;
     }
 
-    if ('src' in changes) {
-      this.loadPDF();
-    } else if (this._pdf) {
-      if ('renderText' in changes) {
-        this.setupViewer();
+    this.pdfJSLoaded.then(() => {
+      if ('src' in changes) {
+        this.loadPDF();
+      } else if (this._pdf) {
+        if ('renderText' in changes) {
+          this.setupViewer();
+        }
+        this.update();
       }
-      this.update();
-    }
+    })
   }
 
   @Input()
@@ -182,11 +193,11 @@ export class PdfViewerComponent implements OnChanges, OnInit {
   }
 
   public setupViewer() {
-    (PDFJS as any).disableTextLayer = !this._renderText;
+    (this.PDFJS as any).disableTextLayer = !this._renderText;
 
-    PdfViewerComponent.setExternalLinkTarget(this._externalLinkTarget);
+    PdfViewerComponent.setExternalLinkTarget(this.PDFJS, this._externalLinkTarget);
 
-    this.pdfLinkService = new PDFJSViewer.PDFLinkService();
+    this.pdfLinkService = new this.PDFJSViewer.PDFLinkService();
 
     const pdfOptions: PDFViewerParams | any = {
       container: this.element.nativeElement.querySelector('div'),
@@ -195,9 +206,9 @@ export class PdfViewerComponent implements OnChanges, OnInit {
       textLayerMode: this._renderText ? 1 : 0
     };
 
-    this.pdfViewer = new PDFJSViewer.PDFViewer(pdfOptions);
+    this.pdfViewer = new this.PDFJSViewer.PDFViewer(pdfOptions);
     this.pdfLinkService.setViewer(this.pdfViewer);
-    this.pdfFindController = new PDFJSViewer.PDFFindController({ pdfViewer: this.pdfViewer });
+    this.pdfFindController = new this.PDFJSViewer.PDFFindController({ pdfViewer: this.pdfViewer });
     this.pdfViewer.setFindController(this.pdfFindController);
   }
 
@@ -234,7 +245,7 @@ export class PdfViewerComponent implements OnChanges, OnInit {
     return page;
   }
 
-  static getLinkTarget(type: string) {
+  static getLinkTarget(PDFJS, type: string) {
     switch (type) {
       case 'blank':
         return (<any>PDFJS).LinkTarget.BLANK;
@@ -251,8 +262,8 @@ export class PdfViewerComponent implements OnChanges, OnInit {
     return null;
   }
 
-  static setExternalLinkTarget(type: string) {
-    const linkTarget = PdfViewerComponent.getLinkTarget(type);
+  static setExternalLinkTarget(PDFJS, type: string) {
+    const linkTarget = PdfViewerComponent.getLinkTarget(PDFJS, type);
 
     if (linkTarget !== null) {
       (<any>PDFJS).externalLinkTarget = linkTarget;
@@ -269,7 +280,7 @@ export class PdfViewerComponent implements OnChanges, OnInit {
       return;
     }
 
-    let loadingTask: any = (PDFJS as any).getDocument(this.src as any);
+    let loadingTask: any = (this.PDFJS as any).getDocument(this.src as any);
 
     loadingTask.onProgress = (progressData: PDFProgressData) => {
       this.onProgress.emit(progressData);
@@ -347,7 +358,7 @@ export class PdfViewerComponent implements OnChanges, OnInit {
 
       PdfViewerComponent.removeAllChildNodes(container);
 
-      (<any>PDFJS).disableTextLayer = !this._renderText;
+      (<any>this.PDFJS).disableTextLayer = !this._renderText;
 
       let pdfOptions: PDFViewerParams | any = {
         container,
@@ -358,14 +369,14 @@ export class PdfViewerComponent implements OnChanges, OnInit {
       };
 
       if (this._renderText) {
-        this.pdfLinkService = new PDFJSViewer.PDFLinkService();
+        this.pdfLinkService = new this.PDFJSViewer.PDFLinkService();
         pdfOptions.linkService = this.pdfLinkService;
-        PdfViewerComponent.setExternalLinkTarget(this._externalLinkTarget);
-        pdfOptions.textLayerFactory = new PDFJSViewer.DefaultTextLayerFactory();
-        pdfOptions.annotationLayerFactory = new PDFJSViewer.DefaultAnnotationLayerFactory();
+        PdfViewerComponent.setExternalLinkTarget(this.PDFJS, this._externalLinkTarget);
+        pdfOptions.textLayerFactory = new this.PDFJSViewer.DefaultTextLayerFactory();
+        pdfOptions.annotationLayerFactory = new this.PDFJSViewer.DefaultAnnotationLayerFactory();
       }
 
-      let pdfPageView = new PDFJSViewer.PDFPageView(pdfOptions);
+      let pdfPageView = new this.PDFJSViewer.PDFPageView(pdfOptions);
 
       if (this._renderText) {
         this.pdfLinkService.setViewer(pdfPageView);

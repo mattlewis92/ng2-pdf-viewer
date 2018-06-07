@@ -5,7 +5,19 @@ import { MatButtonModule, MatInputModule, MatFormFieldModule, MatSlideToggleModu
 
 import { AppComponent } from './app.component';
 import { PdfViewerModule } from './pdf-viewer/pdf-viewer.module';
+import { LAZY_LOAD_PDFJS } from './pdf-viewer/lazy-load-pdfjs';
 
+function lazyLoadPDFJS() {
+  return async () => {
+    const [PDFJS, PDFJSViewer] = await Promise.all(
+      [
+        import('pdfjs-dist/build/pdf'),
+        import('pdfjs-dist/web/pdf_viewer')
+      ]
+    );
+    return {PDFJS, PDFJSViewer}
+  };
+}
 
 describe('AppComponent', () => {
   beforeEach(async(() => {
@@ -22,7 +34,10 @@ describe('AppComponent', () => {
         MatSlideToggleModule,
         MatToolbarModule,
 
-        PdfViewerModule
+        PdfViewerModule.forRoot({
+          provide: LAZY_LOAD_PDFJS,
+          useFactory: lazyLoadPDFJS
+        })
       ]
     }).compileComponents();
   }));

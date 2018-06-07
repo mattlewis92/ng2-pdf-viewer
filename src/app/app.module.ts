@@ -9,7 +9,19 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { PdfViewerModule } from './pdf-viewer/pdf-viewer.module';
 import { AppComponent } from './app.component';
+import { LAZY_LOAD_PDFJS } from './pdf-viewer/lazy-load-pdfjs';
 
+function lazyLoadPDFJS() {
+  return async () => {
+    const [PDFJS, PDFJSViewer] = await Promise.all(
+      [
+        import('pdfjs-dist/build/pdf'),
+        import('pdfjs-dist/web/pdf_viewer')
+      ]
+    );
+    return {PDFJS, PDFJSViewer}
+  };
+}
 
 @NgModule({
   declarations: [
@@ -25,7 +37,10 @@ import { AppComponent } from './app.component';
     MatSlideToggleModule,
     MatToolbarModule,
 
-    PdfViewerModule
+    PdfViewerModule.forRoot({
+      provide: LAZY_LOAD_PDFJS,
+      useFactory: lazyLoadPDFJS
+    })
   ],
   providers: [],
   bootstrap: [AppComponent]

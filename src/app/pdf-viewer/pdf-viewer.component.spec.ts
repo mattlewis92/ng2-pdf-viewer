@@ -3,6 +3,19 @@ import { Component } from '@angular/core';
 
 import { PdfViewerComponent } from './pdf-viewer.component';
 import { PdfViewerModule } from './pdf-viewer.module';
+import { LAZY_LOAD_PDFJS } from './lazy-load-pdfjs';
+
+function lazyLoadPDFJS() {
+  return async () => {
+    const [PDFJS, PDFJSViewer] = await Promise.all(
+      [
+        import('pdfjs-dist/build/pdf'),
+        import('pdfjs-dist/web/pdf_viewer')
+      ]
+    );
+    return {PDFJS, PDFJSViewer}
+  };
+}
 
 @Component({
   template: `<pdf-viewer></pdf-viewer>`
@@ -19,7 +32,10 @@ describe('AppComponent', () => {
         TestComponent
       ],
       imports: [
-        PdfViewerModule
+        PdfViewerModule.forRoot({
+          provide: LAZY_LOAD_PDFJS,
+          useFactory: lazyLoadPDFJS
+        })
       ]
     }).compileComponents();
   }));
